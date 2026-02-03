@@ -17,14 +17,14 @@ global RecoverRestockTimerInput := ""
 global RepairTimerInput := ""
 global SettingBackTimerInput := ""
 
-global RavenKey := "1"
+global RavenKey := "8"
 global FleetKey := "y"
 global FleetRisk := "Maximize Profit"
 global Deck1Task := "Trading"
 global Deck2Task := "Petrol/Plunder"
 global Deck3Task := "Recover"
 global Deck4Task := "Recover"
-global RepairWaitTime := 1000
+global RepairWaitTime := 2500
 global RecoverRestockTimer := 1800
 global RepairTimer := 240
 global SettingBackTimer := 1200
@@ -37,6 +37,13 @@ global RecoverRestockTimerObj := ""
 global RepairTimerObj := ""
 global SettingBackTimerObj := ""
 global PendingRepair := false
+
+; Tooltip timer tracking variables
+global StartTime := 0
+global LastRepairTime := 0
+global LastRecoverRestockTime := 0
+global LastSettingBackTime := 0
+global TooltipUpdateTimer := ""
 
 ; ========================================================================================
 ; Load Settings on Startup
@@ -209,7 +216,7 @@ CreateGUI() {
     GuiObj.Add("Text", "x20 y" . yPos . " w120", "Wait Time (ms):")
     global RepairWaitInput := GuiObj.Add("Edit", "x140 y" . yPos . " w100", RepairWaitTime)
     RepairWaitInput.SetFont("s9 c0x000000")
-    GuiObj.Add("Text", "x2250 y" . (yPos + 2) . " w140", "1sec = 1000ms").SetFont("s8 c0x666666")
+    GuiObj.Add("Text", "x250 y" . (yPos + 2) . " w140", "1sec = 1000ms").SetFont("s8 c0x666666")
     yPos += 45
     
     ; Timer Settings
@@ -219,19 +226,19 @@ CreateGUI() {
     GuiObj.Add("Text", "x20 y" . yPos . " w120", "Recover & Restock:")
     global RecoverRestockTimerInput := GuiObj.Add("Edit", "x140 y" . yPos . " w100", RecoverRestockTimer)
     RecoverRestockTimerInput.SetFont("s9 c0x000000")
-    GuiObj.Add("Text", "x2250 y" . (yPos + 2) . " w100", "seconds").SetFont("s8 c0x666666")
+    GuiObj.Add("Text", "x250 y" . (yPos + 2) . " w100", "seconds").SetFont("s8 c0x666666")
     yPos += 35
     
     GuiObj.Add("Text", "x20 y" . yPos . " w120", "Repair Timer:")
     global RepairTimerInput := GuiObj.Add("Edit", "x140 y" . yPos . " w100", RepairTimer)
     RepairTimerInput.SetFont("s9 c0x000000")
-    GuiObj.Add("Text", "x2250 y" . (yPos + 2) . " w100", "seconds").SetFont("s8 c0x666666")
+    GuiObj.Add("Text", "x250 y" . (yPos + 2) . " w100", "seconds").SetFont("s8 c0x666666")
     yPos += 35
     
     GuiObj.Add("Text", "x20 y" . yPos . " w120", "Setting Back Task:")
     global SettingBackTimerInput := GuiObj.Add("Edit", "x140 y" . yPos . " w100", SettingBackTimer)
     SettingBackTimerInput.SetFont("s9 c0x000000")
-    GuiObj.Add("Text", "x2250 y" . (yPos + 2) . " w100", "seconds").SetFont("s8 c0x666666")
+    GuiObj.Add("Text", "x250 y" . (yPos + 2) . " w100", "seconds").SetFont("s8 c0x666666")
     yPos += 45
     
     ; Save Button
@@ -275,13 +282,23 @@ StartScript() {
     global SettingBackTimerActive := false
     global PendingRepair := false
     
+    ; Initialize timing for tooltip
+    global StartTime := A_TickCount
+    global LastRepairTime := A_TickCount
+    global LastRecoverRestockTime := A_TickCount
+    global LastSettingBackTime := 0
+    
+    ; Start tooltip update timer (updates every 500ms)
+    global TooltipUpdateTimer := () => UpdateTooltip()
+    SetTimer(TooltipUpdateTimer, 500)
+    
     ; Run startup phase
     RunStartupPhase()
 }
 
 ExitScript(*) {
     global IsRunning, ActionInProgress
-    global RecoverRestockTimerObj, RepairTimerObj, SettingBackTimerObj
+    global RecoverRestockTimerObj, RepairTimerObj, SettingBackTimerObj, TooltipUpdateTimer
     
     IsRunning := false
     ActionInProgress := false
@@ -293,239 +310,320 @@ ExitScript(*) {
         SetTimer(RepairTimerObj, 0)
     if SettingBackTimerObj
         SetTimer(SettingBackTimerObj, 0)
+    if TooltipUpdateTimer
+        SetTimer(TooltipUpdateTimer, 0)
+    
+    ; Clear tooltip
+    ToolTip()
     
     ExitApp()
+}
+
+; ========================================================================================
+; Functions - Tooltip Update
+; ========================================================================================
+UpdateTooltip() {
+    global IsRunning, StartTime, LastRepairTime, LastRecoverRestockTime, LastSettingBackTime
+    global RecoverRestockTimerActive, SettingBackTimerActive
+    global RecoverRestockTimer, RepairTimer, SettingBackTimer
+    
+    if !IsRunning {
+        ToolTip()
+        return
+    }
+    
+    currentTime := A_TickCount
+    runningSeconds := Floor((currentTime - StartTime) / 1000)
+    
+    ; Format running time
+    runHours := Floor(runningSeconds / 3600)
+    runMinutes := Floor(Mod(runningSeconds, 3600) / 60)
+    runSecs := Mod(runningSeconds, 60)
+    runningTime := Format("{:02d}:{:02d}:{:02d}", runHours, runMinutes, runSecs)
+    
+    ; Calculate next repair time
+    repairElapsed := Floor((currentTime - LastRepairTime) / 1000)
+    repairRemaining := RepairTimer - repairElapsed
+    if (repairRemaining < 0)
+        repairRemaining := 0
+    repairMins := Floor(repairRemaining / 60)
+    repairSecs := Mod(repairRemaining, 60)
+    nextRepair := Format("{:02d}:{:02d}", repairMins, repairSecs)
+    
+    ; Calculate next recover/restock or setting back time
+    nextRecover := "--"
+    nextSettingBack := "--"
+    
+    if RecoverRestockTimerActive {
+        recoverElapsed := Floor((currentTime - LastRecoverRestockTime) / 1000)
+        recoverRemaining := RecoverRestockTimer - recoverElapsed
+        if (recoverRemaining < 0)
+            recoverRemaining := 0
+        recoverMins := Floor(recoverRemaining / 60)
+        recoverSecs := Mod(recoverRemaining, 60)
+        nextRecover := Format("{:02d}:{:02d}", recoverMins, recoverSecs)
+    }
+    
+    if SettingBackTimerActive {
+        settingElapsed := Floor((currentTime - LastSettingBackTime) / 1000)
+        settingRemaining := SettingBackTimer - settingElapsed
+        if (settingRemaining < 0)
+            settingRemaining := 0
+        settingMins := Floor(settingRemaining / 60)
+        settingSecs := Mod(settingRemaining, 60)
+        nextSettingBack := Format("{:02d}:{:02d}", settingMins, settingSecs)
+    }
+    
+    ; Build tooltip text
+    tooltipText := "⚓ Fleet Assistant Status`n"
+    tooltipText .= "━━━━━━━━━━━━━━━━━━━━━━`n"
+    tooltipText .= "Running Time: " . runningTime . "`n"
+    tooltipText .= "━━━━━━━━━━━━━━━━━━━━━━`n"
+    tooltipText .= "Next Repair: " . nextRepair . "`n"
+    tooltipText .= "Next Recover: " . nextRecover . "`n"
+    tooltipText .= "Next Set Back: " . nextSettingBack
+    
+    ; Display tooltip at fixed position (top-right corner)
+    ToolTip(tooltipText, A_ScreenWidth - 250, 10)
 }
 
 ; ========================================================================================
 ; Functions - Navigation
 ; ========================================================================================
 ClickCenter() {
-    Click()
+    ; Get screen dimensions and click at center
+    screenWidth := A_ScreenWidth
+    screenHeight := A_ScreenHeight
+    centerX := screenWidth / 2
+    centerY := screenHeight / 2
+    Click(centerX, centerY)
     Sleep(1250)
 }
 
-NavigateToCommandTask() {
+NavigateToStartArea() {
     Send("\")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
-    Send("a")
-    Sleep(250)
+    Loop 20 {
+        Sleep(25)
+        Send("w")
+    }
+}
+
+NavigateToCommandTask() {
+    NavigateToStartArea()
+    Sleep(100)
+    Send("s")
+    Sleep(100)
     Send("{Enter}")
-    Sleep(250)
+    Sleep(100)
     Send("\")
 }
 
 NavigateToRestock() {
-    Send("\")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
+    NavigateToStartArea()
+    Sleep(100)
+    Send("s")
+    Sleep(100)
+    Send("d")
+    Sleep(100)
     Send("{Enter}")
-    Sleep(250)
+    Sleep(100)
     Send("\")
 }
 
 NavigateToFleetRisk() {
-    Send("\")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
+    NavigateToStartArea()
+    Sleep(100)
+    Send("s")
+    Sleep(100)
     Send("d")
-    Sleep(250)
+    Sleep(100)
+    Send("d")
+    Sleep(100)
     Send("{Enter}")
-    Sleep(250)
+    Sleep(100)
     Send("\")
 }
 
 NavigateToDeck1() {
-    Send("\")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
-    Send("a")
-    Sleep(250)
+    NavigateToStartArea()
+    Sleep(100)
+    Send("s")
+    Sleep(100)
     Send("{Enter}")
-    Sleep(250)
+    Sleep(100)
     Send("\")
 }
 
 NavigateToDeck2() {
-    Send("\")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
+    NavigateToStartArea()
+    Sleep(100)
+    Send("s")
+    Sleep(100)
+    Send("d")
+    Sleep(100)
     Send("{Enter}")
-    Sleep(250)
+    Sleep(100)
     Send("\")
 }
 
 NavigateToDeck3() {
-    Send("\")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
+    NavigateToStartArea()
+    Sleep(100)
+    Send("s")
+    Sleep(100)
     Send("d")
-    Sleep(250)
+    Sleep(100)
+    Send("d")
+    Sleep(100)
     Send("{Enter}")
-    Sleep(250)
+    Sleep(100)
     Send("\")
 }
 
 NavigateToDeck4() {
-    Send("\")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
+    NavigateToStartArea()
+    Sleep(100)
+    Send("s")
+    Sleep(100)
     Send("d")
-    Sleep(250)
+    Sleep(100)
     Send("d")
-    Sleep(250)
+    Sleep(100)
+    Send("d")
+    Sleep(100)
     Send("{Enter}")
-    Sleep(250)
+    Sleep(100)
     Send("\")
 }
 
 NavigateToTask(task) {
-    Send("\")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
+    NavigateToStartArea()
+    Sleep(100)
+    Send("d")
+    Sleep(100)
     
     switch task {
         case "Exploring":
-            Send("w")
-            Sleep(250)
-            Send("w")
-            Sleep(250)
-            Send("w")
-            Sleep(250)
+            ; d already sent, just enter
         case "Recover":
-            Send("w")
-            Sleep(250)
-            Send("w")
-            Sleep(250)
+            Send("s")
+            Sleep(100)
         case "Petrol/Plunder":
-            Send("w")
-            Sleep(250)
+            Send("s")
+            Sleep(100)
+            Send("s")
+            Sleep(100)
         case "Fishing":
-            ; Already at position
+            Send("s")
+            Sleep(100)
+            Send("s")
+            Sleep(100)
+            Send("s")
+            Sleep(100)
         case "Harvesting":
             Send("s")
-            Sleep(250)
+            Sleep(100)
+            Send("s")
+            Sleep(100)
+            Send("s")
+            Sleep(100)
+            Send("s")
+            Sleep(100)
         case "Conquest":
             Send("s")
-            Sleep(250)
+            Sleep(100)
             Send("s")
-            Sleep(250)
+            Sleep(100)
+            Send("s")
+            Sleep(100)
+            Send("s")
+            Sleep(100)
+            Send("s")
+            Sleep(100)
         case "Trading":
             Send("s")
-            Sleep(250)
+            Sleep(100)
             Send("s")
-            Sleep(250)
+            Sleep(100)
             Send("s")
-            Sleep(250)
+            Sleep(100)
+            Send("s")
+            Sleep(100)
+            Send("s")
+            Sleep(100)
+            Send("s")
+            Sleep(100)
     }
     
     Send("{Enter}")
-    Sleep(250)
+    Sleep(100)
     Send("\")
 }
 
 NavigateToYes() {
-    Send("\")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
+    NavigateToStartArea()
+    Sleep(100)
+    Send("d")
+    Sleep(100)
+    Send("s")
+    Sleep(100)
+    Send("a")
+    Sleep(100)
     Send("{Enter}")
-    Sleep(250)
+    Sleep(100)
     Send("\")
 }
 
 NavigateToMaximizeProfit() {
-    Send("\")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
+    NavigateToStartArea()
+    Sleep(100)
+    Send("d")
+    Sleep(100)
     Send("{Enter}")
-    Sleep(250)
+    Sleep(100)
     Send("\")
 }
 
 NavigateToMinimizeProfit() {
-    Send("\")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
+    NavigateToStartArea()
+    Sleep(100)
+    Send("d")
+    Sleep(100)
+    Send("s")
+    Sleep(100)
     Send("{Enter}")
-    Sleep(250)
+    Sleep(100)
     Send("\")
 }
 
 NavigateToRepairShip() {
-    Send("\")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
+    NavigateToStartArea()
+    Sleep(100)
     Send("s")
-    Sleep(250)
-    Send("d")
-    Sleep(250)
-    Send("d")
-    Sleep(250)
+    Sleep(100)
     Send("s")
-    Sleep(250)
+    Sleep(100)
+    Send("s")
+    Sleep(100)
+    Send("s")
+    Sleep(100)
+    Send("d")
+    Sleep(100)
     Send("{Enter}")
     Sleep(RepairWaitTime)
     Send("w")
-    Sleep(250)
+    Sleep(100)
     Send("w")
-    Sleep(250)
+    Sleep(100)
     Send("w")
-    Sleep(250)
+    Sleep(100)
+    Send("s")
+    Sleep(100)
     Send("w")
-    Sleep(250)
-    Send("a")
-    Sleep(250)
-    Send("w")
-    Sleep(250)
+    Sleep(100)
     Send("{Enter}")
-    Sleep(250)
+    Sleep(100)
     Send("\")
-    Sleep(250)
 }
 
 ; ========================================================================================
@@ -543,11 +641,8 @@ RunStartupPhase() {
     Send(RavenKey)
     Sleep(250)
     ClickCenter()
-    Sleep(1000)
     NavigateToCommandTask()
-    Sleep(250)
     NavigateToDeck1()
-    Sleep(250)
     NavigateToTask(Deck1Task)
     Sleep(2500)
     
@@ -555,11 +650,8 @@ RunStartupPhase() {
     Send(RavenKey)
     Sleep(250)
     ClickCenter()
-    Sleep(1000)
     NavigateToCommandTask()
-    Sleep(250)
     NavigateToDeck2()
-    Sleep(250)
     NavigateToTask(Deck2Task)
     Sleep(2500)
     
@@ -567,11 +659,8 @@ RunStartupPhase() {
     Send(RavenKey)
     Sleep(250)
     ClickCenter()
-    Sleep(1000)
     NavigateToCommandTask()
-    Sleep(250)
     NavigateToDeck3()
-    Sleep(250)
     NavigateToTask(Deck3Task)
     Sleep(2500)
     
@@ -579,38 +668,31 @@ RunStartupPhase() {
     Send(RavenKey)
     Sleep(250)
     ClickCenter()
-    Sleep(1000)
     NavigateToCommandTask()
-    Sleep(250)
     NavigateToDeck4()
-    Sleep(250)
     NavigateToTask(Deck4Task)
     Sleep(2500)
     
     ; Set Fleet Risk
     Send(RavenKey)
     ClickCenter()
-    Sleep(1000)
     NavigateToFleetRisk()
-    Sleep(250)
     
     if (FleetRisk = "Maximize Profit")
         NavigateToMaximizeProfit()
     else
         NavigateToMinimizeProfit()
     
-    Sleep(250)
+    Sleep(2500)
     
     ; Initial Restock if Maximize Profit
     if (FleetRisk = "Maximize Profit") {
         Send(RavenKey)
-        Sleep(50)
+        Sleep(250)
         ClickCenter()
-        Sleep(150)
         NavigateToRestock()
-        Sleep(50)
+        Sleep(500)
         NavigateToYes()
-        Sleep(50)
     }
     
     ActionInProgress := false
@@ -651,11 +733,8 @@ OnRecoverRestockTimer() {
     Send(RavenKey)
     Sleep(250)
     ClickCenter()
-    Sleep(1000)
     NavigateToCommandTask()
-    Sleep(250)
     NavigateToDeck1()
-    Sleep(250)
     NavigateToTask("Petrol/Plunder")
     Sleep(2500)
     
@@ -663,11 +742,8 @@ OnRecoverRestockTimer() {
     Send(RavenKey)
     Sleep(250)
     ClickCenter()
-    Sleep(1000)
     NavigateToCommandTask()
-    Sleep(250)
     NavigateToDeck2()
-    Sleep(250)
     NavigateToTask("Recover")
     Sleep(2500)
     
@@ -675,11 +751,8 @@ OnRecoverRestockTimer() {
     Send(RavenKey)
     Sleep(250)
     ClickCenter()
-    Sleep(1000)
     NavigateToCommandTask()
-    Sleep(250)
     NavigateToDeck3()
-    Sleep(250)
     NavigateToTask("Recover")
     Sleep(2500)
     
@@ -687,11 +760,8 @@ OnRecoverRestockTimer() {
     Send(RavenKey)
     Sleep(250)
     ClickCenter()
-    Sleep(1000)
     NavigateToCommandTask()
-    Sleep(250)
     NavigateToDeck4()
-    Sleep(250)
     NavigateToTask("Recover")
     Sleep(2500)
     
@@ -700,16 +770,15 @@ OnRecoverRestockTimer() {
         Send(RavenKey)
         Sleep(250)
         ClickCenter()
-        Sleep(1000)
         NavigateToRestock()
-        Sleep(250)
+        Sleep(500)
         NavigateToYes()
-        Sleep(250)
     }
     
     ; Switch timers
     global RecoverRestockTimerActive := false
     global SettingBackTimerActive := true
+    global LastSettingBackTime := A_TickCount
     SetTimer(RecoverRestockTimerObj, 0)
     
     global SettingBackTimerObj := () => OnSettingBackTimer()
@@ -743,11 +812,8 @@ OnSettingBackTimer() {
     Send(RavenKey)
     Sleep(250)
     ClickCenter()
-    Sleep(1000)
     NavigateToCommandTask()
-    Sleep(250)
     NavigateToDeck1()
-    Sleep(250)
     NavigateToTask(Deck1Task)
     Sleep(2500)
     
@@ -755,11 +821,8 @@ OnSettingBackTimer() {
     Send(RavenKey)
     Sleep(250)
     ClickCenter()
-    Sleep(1000)
     NavigateToCommandTask()
-    Sleep(250)
     NavigateToDeck2()
-    Sleep(250)
     NavigateToTask(Deck2Task)
     Sleep(2500)
     
@@ -767,11 +830,8 @@ OnSettingBackTimer() {
     Send(RavenKey)
     Sleep(250)
     ClickCenter()
-    Sleep(1000)
     NavigateToCommandTask()
-    Sleep(250)
     NavigateToDeck3()
-    Sleep(250)
     NavigateToTask(Deck3Task)
     Sleep(2500)
     
@@ -779,11 +839,8 @@ OnSettingBackTimer() {
     Send(RavenKey)
     Sleep(250)
     ClickCenter()
-    Sleep(1000)
     NavigateToCommandTask()
-    Sleep(250)
     NavigateToDeck4()
-    Sleep(250)
     NavigateToTask(Deck4Task)
     Sleep(2500)
 
@@ -792,16 +849,15 @@ OnSettingBackTimer() {
         Send(RavenKey)
         Sleep(250)
         ClickCenter()
-        Sleep(1000)
         NavigateToRestock()
-        Sleep(250)
+        Sleep(500)
         NavigateToYes()
-        Sleep(250)
     }
     
     ; Switch timers
     global SettingBackTimerActive := false
     global RecoverRestockTimerActive := true
+    global LastRecoverRestockTime := A_TickCount
     SetTimer(SettingBackTimerObj, 0)
     
     global RecoverRestockTimerObj := () => OnRecoverRestockTimer()
@@ -830,7 +886,7 @@ OnRepairTimer() {
 }
 
 ExecuteRepair() {
-    global ActionInProgress, PendingRepair, IsRunning
+    global ActionInProgress, PendingRepair, IsRunning, LastRepairTime
     
     if !IsRunning
         return
@@ -844,6 +900,9 @@ ExecuteRepair() {
     Sleep(1250)
     Send(FleetKey)
     Sleep(250)
+    
+    ; Update last repair time
+    global LastRepairTime := A_TickCount
     
     ActionInProgress := false
 }
