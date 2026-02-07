@@ -8,6 +8,7 @@ global GuiObj := ""
 global StatusGuiObj := ""
 global RavenKeyInput := ""
 global FleetKeyInput := ""
+global NavigationKeyInput := ""
 global FleetRiskDropdown := ""
 global Deck1Dropdown := ""
 global Deck2Dropdown := ""
@@ -24,15 +25,16 @@ global ResumeTaskTimerInput := ""
 ; ========================================================================================
 global RavenKey := "8"
 global FleetKey := "y"
+global NavigationKey := "\"
 global FleetRisk := "Maximize Profit"
 global Deck1Task := "Trading"
 global Deck2Task := "Trading"
 global Deck3Task := "Recover"
 global Deck4Task := "Recover"
-global RepairWaitTime := 2000
-global RecoverTimer := 3600
+global RepairWaitTime := 3000
+global RecoverTimer := 5400
 global ResuppliesTimer := 300
-global RepairTimer := 150
+global RepairTimer := 300
 global ResumeTaskTimer := 600
 
 ; ========================================================================================
@@ -107,6 +109,7 @@ LoadSettings() {
             switch key {
                 case "RavenKey": global RavenKey := value
                 case "FleetKey": global FleetKey := value
+                case "NavigationKey": global NavigationKey := value
                 case "FleetRisk": global FleetRisk := value
                 case "Deck1Task": global Deck1Task := value
                 case "Deck2Task": global Deck2Task := value
@@ -128,6 +131,7 @@ SaveSettings(*) {
     ; Get current values from GUI
     global RavenKey := RavenKeyInput.Value
     global FleetKey := FleetKeyInput.Value
+    global NavigationKey := NavigationKeyInput.Value
     global FleetRisk := FleetRiskDropdown.Text
     global Deck1Task := Deck1Dropdown.Text
     global Deck2Task := Deck2Dropdown.Text
@@ -142,6 +146,7 @@ SaveSettings(*) {
     content := ""
     content .= "RavenKey=" . RavenKey . "`n"
     content .= "FleetKey=" . FleetKey . "`n"
+    content .= "NavigationKey=" . NavigationKey . "`n"
     content .= "FleetRisk=" . FleetRisk . "`n"
     content .= "Deck1Task=" . Deck1Task . "`n"
     content .= "Deck2Task=" . Deck2Task . "`n"
@@ -191,6 +196,11 @@ CreateGUI() {
     GuiObj.Add("Text", "x20 y" . yPos . " w120", "FleetKey:")
     global FleetKeyInput := GuiObj.Add("Edit", "x140 y" . yPos . " w100", FleetKey)
     FleetKeyInput.SetFont("s9 c0x000000")
+    yPos += 35
+    
+    GuiObj.Add("Text", "x20 y" . yPos . " w120", "Navigation Key:")
+    global NavigationKeyInput := GuiObj.Add("Edit", "x140 y" . yPos . " w100", NavigationKey)
+    NavigationKeyInput.SetFont("s9 c0x000000")
     yPos += 45
     
     ; Fleet Risk Section
@@ -419,7 +429,7 @@ UpdateTooltip() {
 ; Functions - Navigation Core
 ; ========================================================================================
 NavigateToStartArea() {
-    Send("\")
+    Send(NavigationKey)
     Sleep(100)
     
     Loop 20 {
@@ -449,7 +459,7 @@ NavigateToCommandTask() {
     Sleep(100)
     Send("{Enter}")
     Sleep(100)
-    Send("\")
+    Send(NavigationKey)
     Sleep(100)
 }
 
@@ -462,7 +472,7 @@ NavigateToResupplies() {
     Sleep(100)
     Send("{Enter}")
     Sleep(100)
-    Send("\")
+    Send(NavigationKey)
     Sleep(100)
 }
 
@@ -477,7 +487,7 @@ NavigateToFleetRisk() {
     Sleep(100)
     Send("{Enter}")
     Sleep(100)
-    Send("\")
+    Send(NavigationKey)
     Sleep(100)
 }
 
@@ -488,7 +498,7 @@ NavigateToDeck1() {
     Sleep(100)
     Send("{Enter}")
     Sleep(100)
-    Send("\")
+    Send(NavigationKey)
     Sleep(100)
 }
 
@@ -501,7 +511,7 @@ NavigateToDeck2() {
     Sleep(100)
     Send("{Enter}")
     Sleep(100)
-    Send("\")
+    Send(NavigationKey)
     Sleep(100)
 }
 
@@ -516,7 +526,7 @@ NavigateToDeck3() {
     Sleep(100)
     Send("{Enter}")
     Sleep(100)
-    Send("\")
+    Send(NavigationKey)
     Sleep(100)
 }
 
@@ -533,7 +543,7 @@ NavigateToDeck4() {
     Sleep(100)
     Send("{Enter}")
     Sleep(100)
-    Send("\")
+    Send(NavigationKey)
     Sleep(100)
 }
 
@@ -564,7 +574,7 @@ NavigateToRepairShip() {
     Sleep(100)
     Send("{Enter}")
     Sleep(100)
-    Send("\")
+    Send(NavigationKey)
     Sleep(100)
 }
 
@@ -638,7 +648,7 @@ NavigateToTask(taskName) {
     
     Send("{Enter}")
     Sleep(100)
-    Send("\")
+    Send(NavigationKey)
     Sleep(100)
 }
 
@@ -656,7 +666,7 @@ NavigateToYes() {
     Sleep(100)
     Send("{Enter}")
     Sleep(100)
-    Send("\")
+    Send(NavigationKey)
     Sleep(100)
 }
 
@@ -667,7 +677,7 @@ NavigateToMaximizeProfit() {
     Sleep(100)
     Send("{Enter}")
     Sleep(100)
-    Send("\")
+    Send(NavigationKey)
     Sleep(100)
 }
 
@@ -680,7 +690,7 @@ NavigateToMinimizeProfit() {
     Sleep(100)
     Send("{Enter}")
     Sleep(100)
-    Send("\")
+    Send(NavigationKey)
     Sleep(100)
 }
 
